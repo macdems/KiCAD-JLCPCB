@@ -5,7 +5,8 @@ This plugin is designed to generate a Gerber archive for manufacturing with JLCP
 ## Installation
 
 1. Clone or download this repository.
-2. Copy the `jlcpcb` folder to the KiCAD plugins directory.
+2. Run `deploy.py`.
+3. Install the plugin in KiCAD by going to `Tools` > `External Plugins` > `Manage Plugins...` and clicking `Add Plugin...`. Select the `KiCAD-JLCPCB.zip` file.
 
 ## Usage
 
