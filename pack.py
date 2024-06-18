@@ -7,6 +7,7 @@ import subprocess
 FILES = [
     '__init__.py',
     'outline_measure.py',
+    'normalize_string.py',
     'icon.png',
 ]
 
@@ -23,7 +24,7 @@ def make_metadata(version):
         "name": "JLCPCB ",
         "description": "A plugin to create zip compressed gerber files to order PCB for JLCPCB.",
         "description_full": readme,
-        "identifier": "com.github.macdems.KiCad-JLCPCB",
+        "identifier": "com.github.macdems.jlcpcb",
         "type": "plugin",
         "author": {
             "name": "Maciek Dems",
@@ -58,16 +59,18 @@ shutil.rmtree('dist', ignore_errors=True)
 os.makedirs(os.path.join('dist', 'plugins'))
 os.makedirs(os.path.join('dist', 'resources'))
 
+version = get_version()
+
 with open(os.path.join('dist', 'metadata.json'), 'w') as f:
-    json.dump(make_metadata(get_version()), f, indent=4)
+    json.dump(make_metadata(version), f, indent=4)
 
 for file in FILES:
     shutil.copy(file, os.path.join('dist', 'plugins'))
 
-shutil.copy('icon.png', os.path.join('dist', 'resources'))
+shutil.copyfile('icon64.png', os.path.join('dist', 'resources', 'icon.png'))
 
 os.chdir('dist')
-subprocess.run(['zip', '-r', '../KiCad-JLCPCB.zip', '.'])
+subprocess.run(['zip', '-r', f'../KiCad-JLCPCB-{version}.zip', '.'])
 os.chdir('..')
 
 print('Plugin created in KiCad-JLCPCB.zip')

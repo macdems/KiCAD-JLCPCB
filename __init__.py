@@ -9,6 +9,7 @@ import pcbnew
 import wx
 
 from .outline_measure import create_board_size_label
+from .normalize_string import normalize
 
 PLUGIN_NAME = 'JLCPCB'
 OUTPUT_DIR = 'JLCPCB'
@@ -18,43 +19,21 @@ RETRY_WAIT_SECOND = 0.1
 version_major = int(re.match(r"^([0-9]*)\..*", pcbnew.Version()).group(1))
 is_kicad_7plus = version_major >= 7
 
-LAYERS = [
-    (pcbnew.F_Cu, 'F_Cu', '{}.gtl'),
-    (pcbnew.B_Cu, 'B_Cu', '{}.gbl'),
-    (pcbnew.F_SilkS, 'F_Silks', '{}.gto'),
-    (pcbnew.B_SilkS, 'B_Silks', '{}.gbo'),
-    (pcbnew.F_Mask, 'F_Mask', '{}.gts'),
-    (pcbnew.B_Mask, 'B_Mask', '{}.gbs'),
-    (pcbnew.Edge_Cuts, 'Edge_Cuts', '{}.gko'),
-    (pcbnew.In1_Cu, 'In1_Cu', '{}.gl2'),
-    (pcbnew.In2_Cu, 'In2_Cu', '{}.gl3'),
-    (pcbnew.In3_Cu, 'In3_Cu', '{}.gl4'),
-    (pcbnew.In4_Cu, 'In4_Cu', '{}.gl5'),
-]
+# https://jlcpcb.com/help/article/362-how-to-generate-gerber-and-drill-files-in-kicad-7
+# https://jlcpcb.com/help/article/233-Suggested-Naming-Patterns
 
-pcbServices = [
-    {
-        # https://jlcpcb.com/help/article/362-how-to-generate-gerber-and-drill-files-in-kicad-7
-        # https://jlcpcb.com/help/article/233-Suggested-Naming-Patterns
-        'name': 'JLCPCB',
-        'useAuxOrigin': False,
-        'gerberProtelExtensions': True,
-        'excellonFormat': pcbnew.EXCELLON_WRITER.DECIMAL_FORMAT,
-        'drillMergeNpth': False,
-        'drillMinimalHeader': False,
-        'layerRenameRules': {
-            pcbnew.F_Cu: '{}.gtl',
-            pcbnew.B_Cu: '{}.gbl',
-            pcbnew.F_SilkS: '{}.gto',
-            pcbnew.B_SilkS: '{}.gbo',
-            pcbnew.F_Mask: '{}.gts',
-            pcbnew.B_Mask: '{}.gbs',
-            pcbnew.Edge_Cuts: '{}.gko',
-            pcbnew.In1_Cu: '{}.gl2',
-            pcbnew.In2_Cu: '{}.gl3',
-        },
-        'drillExtensionRenameTo': 'xln',
-    },
+LAYERS = [
+    (pcbnew.F_Cu, 'F_Cu', 0, '{}.gtl'),
+    (pcbnew.B_Cu, 'B_Cu', 0, '{}.gbl'),
+    (pcbnew.F_SilkS, 'F_Silks', 0, '{}.gto'),
+    (pcbnew.B_SilkS, 'B_Silks', 0, '{}.gbo'),
+    (pcbnew.F_Mask, 'F_Mask', 0, '{}.gts'),
+    (pcbnew.B_Mask, 'B_Mask', 0, '{}.gbs'),
+    (pcbnew.Edge_Cuts, 'Edge_Cuts', 0, '{}.gko'),
+    (pcbnew.In1_Cu, 'In1_Cu', 3, '{}.g2l'),
+    (pcbnew.In2_Cu, 'In2_Cu', 4, '{}.g3l'),
+    (pcbnew.In3_Cu, 'In3_Cu', 5, '{}.g4l'),
+    (pcbnew.In4_Cu, 'In4_Cu', 6, '{}.g5l'),
 ]
 
 
@@ -120,7 +99,11 @@ def plot_layers(board, gerber_dir, board_project_name):
         po.SetDrillMarksType(pcbnew.PCB_PLOT_PARAMS.NO_DRILL_SHAPE)
     po.SetSkipPlotNPTH_Pads(False)
 
-    for layer_id, layer_type, rename_rule in LAYERS:
+    layer_count = board.GetCopperLayerCount()
+
+    for layer_id, layer_type, counter, rename_rule in LAYERS:
+        if counter > layer_count:
+            break
         pc.SetLayer(layer_id)
         pc.OpenPlotfile(layer_type, pcbnew.PLOT_FORMAT_GERBER, layer_type)
         pc.PlotLayer()
@@ -132,6 +115,7 @@ def plot_layers(board, gerber_dir, board_project_name):
 
 
 def plot_drill(board, gerber_dir, board_project_name):
+    board_file_name = os.path.splitext(os.path.basename(board.GetFileName()))[0]
     ew = pcbnew.EXCELLON_WRITER(board)
     ew.SetFormat(True, pcbnew.EXCELLON_WRITER.DECIMAL_FORMAT, 3, 3)
     offset = pcbnew.VECTOR2I(0, 0) if is_kicad_7plus else pcbnew.wxPoint(0, 0)
@@ -139,9 +123,9 @@ def plot_drill(board, gerber_dir, board_project_name):
     ew.SetMapFileFormat(pcbnew.PLOT_FORMAT_GERBER)
     ew.CreateDrillandMapFilesSet(gerber_dir, True, True)
     for suffix in ('PTH', 'NPTH'):
-        rename_file_if_exists(f'{gerber_dir}/{board_project_name}-{suffix}.drl', f'{gerber_dir}/{board_project_name}-{suffix}.xln')
+        rename_file_if_exists(f'{gerber_dir}/{board_file_name}-{suffix}.drl', f'{gerber_dir}/{board_project_name}-{suffix}.xln')
         rename_file_if_exists(
-            f'{gerber_dir}/{board_project_name}-{suffix}-drl_map.gbr', f'{gerber_dir}/{board_project_name}-{suffix}.drl_map'
+            f'{gerber_dir}/{board_file_name}-{suffix}-drl_map.gbr', f'{gerber_dir}/{board_project_name}-{suffix}.drl_map'
         )
 
 
@@ -150,7 +134,7 @@ def create_zip():
     size_label = create_board_size_label(board)
     board_file_name = board.GetFileName()
     board_dir = os.path.dirname(board_file_name)
-    board_project_name = os.path.splitext(os.path.basename(board_file_name))[0]
+    board_project_name = normalize(os.path.splitext(os.path.basename(board_file_name))[0])
     output_dir = os.path.join(board_dir, OUTPUT_DIR)
     gerber = board_project_name
     if size_label is not None:
@@ -169,7 +153,7 @@ def create_zip():
     plot_drill(board, gerber_dir, board_project_name)
 
     remove_file_if_exists(zip_file)
-    shutil.make_archive(gerber_dir, 'zip', output_dir, gerber)
+    shutil.make_archive(gerber_dir, 'zip', os.path.join(output_dir, gerber))
 
     return zip_file
 
